@@ -1,1 +1,2 @@
 11/02/2017 14:00 - 16:30 Initial reading and extracting data from databases
+16/02/2017 17:30 - 18:15 More of the above, and working out expected data volumes

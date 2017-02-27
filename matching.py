@@ -51,7 +51,6 @@ def get_acquisitions_data():
         i = row - 1
         data.append({})
         data[i][ID] = sheet.cell_value(rowx=row, colx=1)
-        data[i]["ACQUIROR AN
 
 def get_sheet_data(sheet):
     data = []

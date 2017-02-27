@@ -1,7 +1,9 @@
 import xlrd, json, openpyxl
+from string import punctuation
 from os.path import join, isfile
 from os import listdir
 from pprint import pprint as pp
+from functools import reduce
 
 
 document_home = "/home/joe/sajid/"
@@ -12,24 +14,44 @@ loans_sheets_paths = []
 
 for subdir in ["GlobalminusUSUK", "UK", "US"]:
     p = join(loans_path, subdir)
-    loans_sheets_paths += [join(p, f) for f in listdir(p) if isfile(join(p, f)) and not "~" in f and not "rev" in f]
+    loans_sheets_paths += [join(p, f) for f in listdir(p)
+                           if isfile(join(p, f)) and not "~" in f and not "rev" in f]
 
 
-BORROWER = ("Borrower", 0)
-DATE = ("Announcement Date", 15)
-DESCRS = ("Role Descriptions", 44)
-MANAGERS = ("All Managers", 45)
+BORROWER = ("BORROWER", 0)
+DATE = ("ANNOUNCEMENT DATE", 15)
+DESCRS = ("ROLE DESCRIPTIONS", 44)
+MANAGERS = ("ALL MANAGERS", 45)
+BOOKRUNNERS = ("BOOKRUNNERS", 41)
+MANDATED_MANAGERS = ("MANDATED MANAGERS", 54)
 LEAD_ROLES = {"CO-MANAGER", "LEAD MANAGER", "CO-LEAD MANAGER"}
 LEAD = "LEAD"
 PART = "PART"
 ID = "ID"
 N_PARTS = "N Parts"
 N_LEADS = "N Leads"
+NORMALISED_MANAGERS = "NORMALISED_MANAGERS"
+ACQUIROR_NAME = ("ACQUIROR NAME", 2)
+TARGET_NAME = ("TARGET NAME", 4)
 
 
 def get_sheet(fname):
     return xlrd.open_workbook(fname).sheet_by_index(0)
 
+
+def normalise(name):
+    return name[0].lower().translate(str.maketrans("", "", punctuation))
+
+
+def get_acquisitions_data():
+    sheet = xlrd.open_workbook(acquisitions_path)
+    data = []
+
+    for row in range(1, sheet.nrows):
+        i = row - 1
+        data.append({})
+        data[i][ID] = sheet.cell_value(rowx=row, colx=1)
+        data[i]["ACQUIROR AN
 
 def get_sheet_data(sheet):
     data = []
@@ -39,9 +61,17 @@ def get_sheet_data(sheet):
         data[i][ID] = i
         data[i][BORROWER[0]] = sheet.cell_value(rowx=row, colx=BORROWER[1])
         data[i][DATE[0]] = sheet.cell_value(rowx=row, colx=DATE[1])
-        data[i][MANAGERS[0]] = list(zip(sheet.cell_value(rowx=row, colx=MANAGERS[1]).split("\n"), map(lambda x: LEAD if x in LEAD_ROLES else PART, sheet.cell_value(rowx=row, colx=DESCRS[1]).split("\n")), sheet.cell_value(rowx=row, colx=DESCRS[1]).split("\n")))
+        data[i][MANAGERS[0]] = list(zip(sheet.cell_value(rowx=row, colx=MANAGERS[1]).split("\n"),
+                                        map(lambda x: LEAD if x in LEAD_ROLES else PART,
+                                            sheet.cell_value(rowx=row, colx=DESCRS[1]).split("\n")),
+                                        sheet.cell_value(rowx=row, colx=DESCRS[1]).split("\n")))
         data[i][N_PARTS] = sum(p[1] == PART for p in data[i][MANAGERS[0]])
         data[i][N_LEADS] = sum(p[1] == LEAD for p in data[i][MANAGERS[0]])
+
+        data[i][BOOKRUNNERS[0]] = sheet.cell_value(rowx=row, colx=BOOKRUNNERS[1]).split("\n")
+        data[i][MANDATED_MANAGERS[0]] = sheet.cell_value(rowx=row, colx=MANDATED_MANAGERS[1]).split("\n")
+        data
+        data[i][NORMALISED_MANAGERS] = [normalise(m) for m in data[i][MANAGERS[0]]]
         
     return data
 
@@ -63,6 +93,35 @@ def all_role_descriptions(loans_data):
         for m in d[MANAGERS[0]]:
             descrs.add(m[1])
     return descrs
+            
+
+def compare_managers(loans):
+    wb = openpyxl.Workbook()
+    wb.name = "Managers"
+    sheet = wb.active
+    sheet.title = "Managers"
+
+    sheet.cell(row = 1, column = 1).value = ID
+    sheet.cell(row = 1, column = 2).value = MANAGERS[0]
+    sheet.cell(row = 1, column = 3).value = "ROLE"
+    sheet.cell(row = 1, column = 4).value = "IDENTIFIED ROLE"
+    sheet.cell(row = 1, column = 5).value = "BOOKRUNNER"
+    sheet.cell(row = 1, column = 6).value = "MANDATED MANAGER"
+
+    y = 2
+
+    for loan in loans:
+        sheet.cell(row = y, column = 1).value = loan[ID]
+        
+        for m in loan[MANAGERS[0]]:
+            sheet.cell(row = y, column = 2).value = m[0]
+            sheet.cell(row = y, column = 3).value = m[2]
+            sheet.cell(row = y, column = 4).value = m[1]
+            sheet.cell(row = y, column = 5).value = str(m[0] in loan[BOOKRUNNERS[0]])
+            sheet.cell(row = y, column = 6).value = str(m[0] in loan[MANDATED_MANAGERS[0]])
+            y += 1
+
+    wb.save("Managers.xlsx")
 
 
 def make_sheet(loans):
@@ -75,7 +134,7 @@ def make_sheet(loans):
     max_parts = max(l[N_PARTS] for l in loans)
 
     sheet.cell(row = 1, column = 1).value = ID
-    sheet.cell(row = 1, column = 2).value = "Date"
+    sheet.cell(row = 1, column = 2).value = DATE[0]
 
     for i in range(max_leads):
         sheet.cell(row = 1, column = i + 3).value  = "Lead " + str(i + 1)
@@ -84,8 +143,8 @@ def make_sheet(loans):
         sheet.cell(row = 1, column = i + 3 + max_leads).value =  "Part " + str(i + 1)
 
     for y, loan in enumerate(loans):
-        if (y % 10000 == 0):
-            print(str(y) + " loans written of " + str(len(loans)))
+        #if (y % 10000 == 0):
+        #    print(str(y) + " loans written of " + str(len(loans)))
         sheet.cell(row = y + 2, column = 1).value = loan[ID]
         sheet.cell(row = y + 2, column = 2).value = loan[DATE[0]]
 

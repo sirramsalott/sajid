@@ -4,6 +4,7 @@ from os.path import join, isfile
 from os import listdir
 from pprint import pprint as pp
 from functools import reduce
+from nltk import edit_distance
 
 
 document_home = "/home/joe/sajid/"
@@ -33,6 +34,8 @@ N_LEADS = "N Leads"
 NORMALISED_MANAGERS = "NORMALISED_MANAGERS"
 ACQUIROR_NAME = ("ACQUIROR NAME", 2)
 TARGET_NAME = ("TARGET NAME", 4)
+ACQUISITION_DATE = ("COMPLETED DATE", 13)
+DEAL_STATUS = ("DEAL STATUS", 7)
 
 
 def get_sheet(fname):
@@ -44,13 +47,20 @@ def normalise(name):
 
 
 def get_acquisitions_data():
-    sheet = xlrd.open_workbook(acquisitions_path)
+    sheet = xlrd.open_workbook(acquisitions_path).sheet_by_index(1)    
     data = []
 
     for row in range(1, sheet.nrows):
         i = row - 1
         data.append({})
         data[i][ID] = sheet.cell_value(rowx=row, colx=1)
+        data[i][ACQUIROR_NAME[0]] = normalise([sheet.cell_value(rowx=row, colx=ACQUIROR_NAME[1])])
+        data[i][TARGET_NAME[0]] = normalise([sheet.cell_value(rowx=row, colx=TARGET_NAME[1])])
+        data[i][ACQUISITION_DATE[0]] = sheet.cell_value(rowx=row, colx=ACQUISITION_DATE[1])
+        data[i][DEAL_STATUS[0]] = sheet.cell_value(rowx=row, colx=DEAL_STATUS[1])
+
+    return data
+        
 
 def get_sheet_data(sheet):
     data = []
@@ -142,8 +152,6 @@ def make_sheet(loans):
         sheet.cell(row = 1, column = i + 3 + max_leads).value =  "Part " + str(i + 1)
 
     for y, loan in enumerate(loans):
-        #if (y % 10000 == 0):
-        #    print(str(y) + " loans written of " + str(len(loans)))
         sheet.cell(row = y + 2, column = 1).value = loan[ID]
         sheet.cell(row = y + 2, column = 2).value = loan[DATE[0]]
 
@@ -151,7 +159,6 @@ def make_sheet(loans):
             sheet.cell(row = y + 2, column = i + 3).value = lead[0]
 
         for i, part in enumerate(filter(lambda x: x[1] == PART, loan[MANAGERS[0]])):
-            sheet.cell(row = y + 2, column = i + 3 + max_leads).value = part[0]
-            
+            sheet.cell(row = y + 2, column = i + 3 + max_leads).value = part[0]            
         
     wb.save("Loans.xlsx")

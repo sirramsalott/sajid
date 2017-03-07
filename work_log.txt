@@ -4,3 +4,5 @@
 23/02/2017 17:00 - 18:00 Comparing bookrunners
 27/02/2017 17:45 - 19:45 Comparing bookrunners & reading acquisitions
 28/02/2017 19:30 - 20:00 A little on string edit distance
+02/03/2017 17:45 - 20:15 SQL
+06/03/2017 18:00 - 19:30 Refactoring, since it is all a horrible mess

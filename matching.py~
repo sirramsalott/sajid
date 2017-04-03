@@ -1,0 +1,27 @@
+import xlrd
+from os.path import join, isfile
+from os import listdir
+
+
+document_home = "/home/joe/sajid/"
+acquisitions_path = join(document_home, "M&As Data/Zephyr_Export_3.xls")
+loans_path = join(document_home, "Syndicated Loan Data/")
+loans_sheets_paths = []
+
+
+class Loan(object):
+    def __init__(self, date, borrower, role_descrs, managers):
+        self.date = date
+        self.borrower = borrower
+        self.role_descrs = role_desrcs
+        self.managers = managers
+
+
+for subdir in ["GlobalminusUSUK", "UK", "US"]:
+    p = join(loans_path, subdir)
+    loans_sheets_paths += [join(p, f) for f in listdir(p) if isfile(join(p, f))]
+
+
+def get_sheet(fname):
+    return xlrd.open_workbook(fname).sheet_by_index(0)
+

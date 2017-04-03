@@ -1,0 +1,82 @@
+import pymysql, xlrd
+from datetime import datetime
+from string import punctuation
+from os.path import join, isfile
+from os import listdir
+
+
+document_home = "/home/joe/sajid/"
+acquisitions_path = join(document_home, "M&As Data/Zephyr_Export_3.xls")
+loans_path = join(document_home, "Syndicated Loan Data/")
+loans_sheets_paths = []
+
+
+for subdir in ["GlobalminusUSUK", "UK", "US"]:
+    p = join(loans_path, subdir)
+    loans_sheets_paths += [join(p, f) for f in listdir(p)
+                           if isfile(join(p, f)) and not "~" in f and not "rev" in f]
+
+
+def normalise_name(name):
+    return "".join([x for x in name.lower().translate(str.maketrans("", "", punctuation)) if ord(x) < 128])
+    
+
+def create_acquisitions():
+    book = xlrd.open_workbook(acquisitions_path)
+    sheet = book.sheet_by_index(1)
+    connection = pymysql.connect(host="localhost",
+                                 user="root",
+                                 password="toor",
+                                 db="Banks")
+    
+    create_bank = """DROP TABLE IF EXISTS ABank;
+                     CREATE TABLE ABank (
+                         bankID INT NOT NULL AUTO_INCREMENT,
+                         name VARCHAR(255),
+                         PRIMARY KEY (bankID));"""
+    insert_bank = "INSERT INTO ABank (name) VALUES %s;"
+    
+    banks = set()
+    for i in range(1, sheet.nrows):
+        banks.add(normalise_name(sheet.cell_value(rowx=i, colx=2)))
+        banks.add(normalise_name(sheet.cell_value(rowx=i, colx=4)))
+
+    banks_q = ",".join(["('" + bank + "')" for bank in banks])
+
+    labels = [sheet.cell_value(rowx=0, colx=i) for i in range(1, sheet.ncols)]
+
+    create_acquisition = """DROP TABLE IF EXISTS Acquisition;
+                            CREATE TABLE Acquisition (
+                                dealNo INT NOT NULL UNIQUE,
+                                acquiror INT,
+                                target INT,
+                                status VARCHAR(128),
+                                dealDate DATE,
+                                PRIMARY KEY (dealNo),
+                                FOREIGN KEY (acquiror) REFERENCES (ABank),
+                                FOREIGN KEY (target) REFERENCES (ABank));"""
+    insert_acquisition = "INSERT INTO Acquisition (dealNo, acquiror, target, status, dealDate) VALUES %s;"
+    print(sheet.nrows)
+    acquisitions_q = ",".join(["(" +
+                               sheet.cell_value(rowx=i, colx=1) + "," +
+                               "(SELECT bankID FROM ABank WHERE name='%s')"%normalise_name(sheet.cell_value(rowx=i, colx=2)) + "," +
+                               "(SELECT bankID FROM ABank WHERE name='%s')"%normalise_name(sheet.cell_value(rowx=i, colx=4)) + "," +
+                               "'" + sheet.cell_value(rowx=i, colx=7) + "'," +
+                               "NULL"
+                               if sheet.cell_value(rowx=i, colx=13) == ""
+                               else str(datetime(*xlrd.xldate_as_tuple(sheet.cell_value(rowx=i, colx=13), book.datemode))) +
+                               ")" for i in range(1, sheet.nrows)])
+    #print(acquisitions_q)
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(create_bank)
+            cursor.execute(insert_bank % banks_q)
+            cursor.execute(create_acquisition)
+            #cursor.execute(insert_acquisition)
+            connection.commit()
+    except Exception as e:
+        print(e)
+    finally:
+        connection.close()
+                                 

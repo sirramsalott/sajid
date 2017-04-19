@@ -29,42 +29,43 @@ class CompanyNameSimilarity:
                              for word in company_name.split() if self.preprocess(word).strip() not in stop_list])
                 
 
-    def is_company_approx_contained(self, str1, str2):
+    def is_company_approx_contained(self, str1, str2, str1_set, str2_set, str12_set):
             approx_contained_threshold = 0.3
             if len(str1) == 0:
                     return False
-            str1_set = set([x.lower().strip() for x in str1.split()])
-            str2_set = set([x.lower().strip() for x in str2.split()])
-            if len(list(str1_set)) == 0 or len(list(str2_set)) == 0:
+            #str1_set = set([x.lower().strip() for x in str1.split()])
+            #str2_set = set([x.lower().strip() for x in str2.split()])
+            if len(str1_set) == 0 or len(str2_set) == 0:
                     return False
-            score_num = len(str1_set & str2_set)
+            score_num = len(str12_set)
             score_den1 = len(str1_set)
             score_den2 = len(str2_set)
-            return ((float(score_num) / float(score_den1))+(float(score_num)/float(score_den2)))/2 > approx_contained_threshold
+            return ((score_num / score_den1)+(score_num/score_den2))/2 > approx_contained_threshold
 
   
-    def match_score(self, str1, str2, mode = 'reflex'):
-            str1 = self.normalize_company_name(str1)
-            str2 = self.normalize_company_name(str2)
+    def match_score(self, str1, str2, str1_set, str2_set, mode = 'reflex'):
+            #str1 = self.normalize_company_name(str1)
+            #str2 = self.normalize_company_name(str2)
             if len(str1) == 0:
                     return 0
-            str1_set = set([x.lower().strip() for x in str1.split()])
-            str2_set = set([x.lower().strip() for x in str2.split()])
-            if len(list(str1_set)) == 0 or len(list(str2_set)) == 0:
+            #str1_set = set([x.lower().strip() for x in str1.split()])
+            #str2_set = set([x.lower().strip() for x in str2.split()])
+            if len(str1_set) == 0 or len(str2_set) == 0:
                     return 0
-            if not self.is_company_approx_contained(str1,str2):
+            str12_set = str1_set & str2_set
+            if not self.is_company_approx_contained(str1,str2, str1_set, str2_set, str12_set):
                  return 0
-            mismatch_set1=[elem for elem in str1.split() if elem not in (str1_set & str2_set)]
-            mismatch_set2=[elem for elem in str2.split() if elem not in (str1_set & str2_set)]
+            mismatch_set1=[elem for elem in str1.split() if elem not in str12_set]
+            mismatch_set2=[elem for elem in str2.split() if elem not in str12_set]
             partial_match_score_1 = self.compute_partial_match_score(mismatch_set1,mismatch_set2)
             partial_match_score_2 = self.compute_partial_match_score(mismatch_set2,mismatch_set1)
-            score_num = len(str1_set & str2_set)
+            score_num = len(str12_set)
             score_den1 = len(str1_set)
             score_den2 = len(str2_set)
             if mode == 'non-reflex':
-                return float(score_num + partial_match_score_1) / float(score_den1)
+                return (score_num + partial_match_score_1) / score_den1
             if mode == 'reflex':
-                return ((float(score_num + partial_match_score_1) / float(score_den1))+(float(score_num + partial_match_score_2)/float(score_den2)))/2
+                return ((score_num + partial_match_score_1) / score_den1)+((score_num + partial_match_score_2)/float(score_den2))/2
 
 
     def compute_partial_match_score(self, set_str1,set_str2):

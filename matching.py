@@ -1,4 +1,5 @@
 import xlrd, json, openpyxl
+import sys
 from string import punctuation
 from os.path import join, isfile
 from os import listdir
@@ -17,7 +18,7 @@ loans_sheets_paths = []
 cm = CompanyNameSimilarity()
 
 
-with open("wc.txt") as f:
+owith open("wc.txt") as f:
     places = f.read().split("\n")
 
 
@@ -62,6 +63,12 @@ class Loan(object):
         self.borrower = borrower
         self.raw_leads = raw_leads
         self.raw_parts = raw_parts
+        """
+        for (i, l) in enumerate(leads):
+            for (j, p) in enumerate(parts):
+                if 0.51 < similarity_score(set(l[0][0]), set(p[0][0])) < 1:
+                    matches.append((i, j))
+           """     
 
     def __repr__(self):
         return str(self.__dict__)
@@ -131,14 +138,15 @@ def similarity_score(s1, s2):
 def compare_acquisitions():
     wb = openpyxl.Workbook()
     wb.name = "Name comparison"
-    acs = get_acquisitions_data()[1000:]
+    acs = get_acquisitions_data()
     sheet = wb.active
     sheet.title = "Name comparison"
     i = 0
     cm = CompanyNameSimilarity()
     matches = set()
     
-    for a in acs:
+    for (n,a) in enumerate(acs):
+        print(str(n) + " of " + str(len(acs)))
         ja = " ".join(a.acquiror_set)
         
         for b in acs:

@@ -1,0 +1,248 @@
+from os.path import join, isfile
+from os import listdir
+from string import punctuation
+from sys import maxsize
+from numpy import array
+import xlrd, openpyxl
+from company_name_similarity import CompanyNameSimilarity
+from collections import defaultdict
+
+
+# SET UP GLOBAL VARIABLES
+document_home = "/home/joe/sajid/"
+acquisitions_path = join(document_home, "M&As Data/Zephyr_Export_3.xls")
+loans_path = join(document_home, "Syndicated Loan Data/")
+loans_sheets_paths = []
+cm = CompanyNameSimilarity()
+
+for subdir in ["GlobalminusUSUK", "UK", "US"]:
+    p = join(loans_path, subdir)
+    loans_sheets_paths += [join(p, f) for f in listdir(p)
+                           if isfile(join(p, f)) and not "~" in f and not "rev" in f]
+num_loans = len(loans_sheets_paths)
+    
+stopwords = {"bank", "sa", "ltd", "inc", "plc", "of", "the", "ag", "oao",
+             "group", "de", "do", "di", "and", "banking", "banca"}
+
+with open("wc.txt") as f:
+    places = f.read().split("\n")
+    
+
+class Bank(object):
+
+    similarity_threshold = 0.5
+    matched_banks = {}
+    
+    def __init__(self, name):
+        self.name = name
+        (self.n_name, self.location) = self.normalise(name)
+        self.name_set = set(self.n_name.split(" "))
+        
+
+    def __repr__(self):
+        return self.name
+
+    
+    def normalise(self, name):
+        tokens = ""
+        locations = set()
+        for x in name.lower().translate(str.maketrans(punctuation, " "*len(punctuation))).split(" "):
+            if x not in stopwords:
+                if x in places:
+                    locations.add(x)
+                else:
+                    tokens += x + " "
+        return (tokens[:-1], locations)
+
+
+    def jaccard(self, s1, s2):
+        u = len(s1.union(s2))
+        if u == 0:
+            return 0
+        return len(s1.intersection(s2)) / u
+
+    
+    def similarity(self, bank):
+        try:
+            return self.matched_banks[bank]
+        except KeyError:
+            if self.location != bank.location:
+                return 0
+            score = cm.match_score(self.n_name, bank.n_name, self.name_set, bank.name_set)
+            self.matched_banks[bank] = score
+            return score
+        
+
+    def matches(self, bank):
+        return self.similarity(bank) > self.similarity_threshold
+
+    
+class Loan(object):
+    def __init__(self, num, date, leads, parts, borrower):
+        self.num = num
+        self.date = date
+        self.leads = [Bank(l) for l in leads]
+        self.parts = [Bank(p) for p in parts]
+        self.all_managers = self.leads + self.parts
+        self.borrower = borrower
+
+
+    def __repr__(self):
+        return str(self.__dict__)
+    
+
+class Acquisition(object):
+    def __init__(self, num, acquiror, target, date, status):
+        self.num = num
+        self.acquiror = Bank(acquiror)
+        self.target = Bank(target)
+        self.date = date
+        self.status = status
+
+
+    def __repr__(self):
+        return str(self.__dict__)
+
+
+def is_lead(manager):
+    return manager[1] in {"CO-MANAGER", "LEAD MANAGER", "CO-LEAD MANAGER"}
+
+    
+def get_sheet_data(sheet, row_start):
+    data = []
+    for row in range(3, sheet.nrows):
+        managers = zip(sheet.cell_value(rowx=row, colx=45).split("\n"),
+                       sheet.cell_value(rowx=row, colx=44).split("\n"))
+        leads = []
+        parts = []
+        for m in managers:
+            leads.append(m[0]) if is_lead(m) else parts.append(m[0])
+            
+        data.append(Loan(row_start + row - 3,
+                         sheet.cell_value(rowx=row, colx=15),
+                         leads, parts,
+                         sheet.cell_value(rowx=row, colx=0)))
+    return data
+        
+        
+def get_loans_data(n = num_loans):
+    data = []
+    i = 0
+    num = 0
+    while i < n:
+        data += get_sheet_data(xlrd.open_workbook(loans_sheets_paths[i]).sheet_by_index(0), num)
+        num = len(data)
+        i += 1
+        print("Read sheet " + str(i) + " of " + str(n))
+    return array(data)
+
+
+def get_acquisitions_data():
+    sheet = xlrd.open_workbook(acquisitions_path).sheet_by_index(1)
+    data = []
+    for row in range(1, sheet.nrows):
+        if row % 1000 == 0:
+            print("Read acquisition " + str(row) + " of " + str(sheet.nrows))
+        data.append(Acquisition(sheet.cell_value(rowx=row, colx=1),
+                                sheet.cell_value(rowx=row, colx=2),
+                                sheet.cell_value(rowx=row, colx=4),
+                                sheet.cell_value(rowx=row, colx=13),
+                                sheet.cell_value(rowx=row, colx=7)))
+    return array(data)
+
+
+def get_all_banks():
+    with open("banks.txt") as f:
+        banks = f.read().split("\n")
+    return [Bank(b) for b in banks]
+
+
+def compare_all_banks():
+    banks = get_all_banks()
+    comparison_matrix = defaultdict(dict)
+    for (i, b1) in enumerate(banks):
+        if i % 100 == 0:
+            print("Bank " + str(i) + " of " + str(len(banks)))
+            
+        for b2 in banks:
+            try:
+                comparison_matrix[b1.name][b2.name] = comparison_matrix[b2.name][b1.name]
+            except KeyError:
+                comparison_matrix[b1.name][b2.name] = b1.similarity(b2)
+
+
+def find_matches(loan, acquisitions):
+    matches = []
+    for a in acquisitions:
+        for (i, b1) in enumerate(loan.all_managers):
+            for (j, b2) in enumerate(loan.all_managers):
+                if i != j and b1.matches(a.acquiror) and b2.matches(a.target):
+                    matches.append((i, j))
+    return matches
+
+
+def block_matches(loans, acquisitions):
+    matches = []
+    for (i, loan) in enumerate(loans):
+        print("Computing matches for loan " + str(i) + " of " + str(len(loans)))
+        matches.append(find_matches(loan, acquisitions))
+    return matches
+
+
+def all_matches():
+    return block_matches(get_loans_data(), get_acquisitions_data())
+
+
+def make_sheet(loans, acquisitions):
+    wb = openpyxl.Workbook()
+    wb.name = "Loans data"
+    sheet = wb.active
+    sheet.title = "Loans data"
+
+    max_leads = max(len(l.leads) for l in loans)
+    max_parts = max(len(l.parts) for l in loans)
+
+    sheet.cell(row = 1, column = 1).value = "ID"
+    sheet.cell(row = 1, column = 2).value = "DATE"
+
+    for i in range(max_leads):
+        sheet.cell(row = 1, column = i + 3).value = "Lead " + str(i + 1)
+
+    for i in range(max_parts):
+        sheet.cell(row = 1, column = i + 3 + max_leads).value = "Part " + str(i + 1)
+
+    for (y, loan) in enumerate(loans):
+        sheet.cell(row = y + 2, column = 1).value = loan.num
+        sheet.cell(row = y + 2, column = 2).value = loan.date
+
+        for (i, lead) in enumerate(loan.leads):
+            sheet.cell(row = y + 2, column = i + 3).value = lead.name
+
+        for (i, part) in enumerate(loan.parts):
+            sheet.cell(row = y + 2, column = i + 3 + max_leads).value = part.name
+
+    wb.save("Loans.xlsx")
+
+
+def compare_banks():
+    bs = get_all_banks()
+    wb = openpyxl.Workbook()
+    wb.name = "Name comparison"
+    sheet = wb.active
+    sheet.title = "Name comparison"
+    i = 0
+    matches = set()
+    for (n, b1) in enumerate(bs):
+        for b2 in bs:
+            s = b1.similarity(b2)
+            if 1 > s > 0.5 and (b1, b2) not in matches:
+                i += 1
+                sheet.cell(row = i, column = 1).value = b1.name
+                sheet.cell(row = i, column = 2).value = b2.name
+                sheet.cell(row = i, column = 3).value = s
+                matches.add((b1, b2))
+        if n % 100 == 0:
+            print(str(n) + " of " + str(len(bs)) + " compared")
+    print(str(i) + " matches identified")
+    wb.save("Names.xlsx")
+            

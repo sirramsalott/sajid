@@ -265,6 +265,14 @@ def get_all_matches(acquisitions, comparisons):
     return matches
 
 
+def remove_duplicates(l):
+    seen = []
+    for x in l:
+        if x not in seen:
+            seen.append(x)
+    return seen
+
+
 def make_sheet(loans, acquisitions, matches):
     wb = openpyxl.Workbook()
     wb.name = "Loans data"
@@ -283,7 +291,9 @@ def make_sheet(loans, acquisitions, matches):
     for i in range(max_parts):
         sheet.cell(row = 1, column = i + 3 + max_leads).value = "Part " + str(i + 1)
 
-    normalised_matches = [m[0] for m in matches if m != [[],[]]]
+    seen = []
+    normalised_matches = remove_duplicates([m[0] for m in matches if m != [[],[]]])
+    #print(normalised_matches)
     for (i, m) in enumerate(normalised_matches):
         #print(m)
         if m[0] != []:
@@ -292,6 +302,9 @@ def make_sheet(loans, acquisitions, matches):
             sheet.cell(row = 1, column = i + 3 + max_leads + max_parts).value = "Part" + str(m[1][0][0]) + "Lead" + str([1][0][1])
 
     for (y, loan) in enumerate(loans):
+        if (y % 100 == 0):
+            print(str(y) + " of " + str(len(loans)))
+            
         match_list = matches[y]
         sheet.cell(row = y + 2, column = 1).value = loan.num
         sheet.cell(row = y + 2, column = 2).value = loan.date

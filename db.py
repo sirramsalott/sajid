@@ -127,13 +127,13 @@ class Loan(object):
 
     def find_matches(self, acquisitions, comparisons):
         matches = ([],[])
-        for ac in acquisitions:
+        for (k, ac) in enumerate(acquisitions):
             for (i, lead) in enumerate(self.leads):
                 for (j, part) in enumerate(self.parts):    
                     if lead.matches(ac.acquiror, comparisons) and part.matches(ac.target, comparisons):
-                        matches[0].append((i, j))
+                        matches[0].append((i, j, ac.num))
                     if part.matches(ac.acquiror, comparisons) and lead.matches(ac.target, comparisons):
-                        matches[0].append((j, i))
+                        matches[0].append((j, i, ac.num))
         return matches                
     
 
@@ -296,9 +296,10 @@ def make_sheet(loans, acquisitions, matches):
     #print(normalised_matches)
     for (i, m) in enumerate(normalised_matches):
         #print(m)
-        if m[0] != []:
+        #print(normalised_matches)
+        if m and m[0] != []:
             sheet.cell(row = 1, column = i + 3 + max_leads + max_parts).value = "Lead" + str(m[0][0]) + "Part" + str(m[0][1])
-        elif m[1] != []:
+        elif m and m[1] != []:
             sheet.cell(row = 1, column = i + 3 + max_leads + max_parts).value = "Part" + str(m[1][0][0]) + "Lead" + str([1][0][1])
 
     for (y, loan) in enumerate(loans):
@@ -317,7 +318,7 @@ def make_sheet(loans, acquisitions, matches):
 
         for match in match_list:
             if match != []:
-                #print(match_list)
-                sheet.cell(row = y + 2, column = i + 3 + max_leads + max_parts + normalised_matches.index(match)).value = 1
+                #print(match)
+                sheet.cell(row = y + 2, column = i + 3 + max_leads + max_parts + normalised_matches.index(match)).value = match[0][2]
 
     wb.save("Loans.xlsx")
